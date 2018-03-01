@@ -14,10 +14,9 @@ from torch.autograd import Variable
 
 
 import model
-# test_data_path = '/home/test/Documents/express_recognition/data/icdar2015/test2015'
-test_data_path = './testdata'
-checkpoint_path = './checkpoints/model_1440.pth'
-output_dir_box = './result/box'
+# test_data_path = '/home/mathu/Documents/express_recognition/data/icdar2015/test2015'
+test_data_path = '/home/mathu/Documents/express_recognition/data/telephone_txt/result/print_pic/'
+checkpoint_path = './checkpoints/model_500.pth'
 output_dir_txt = './result/txt'
 output_dir_pic = './result/pic'
 
@@ -98,7 +97,9 @@ def resize_image(im, max_side_len=2400):
 
 	return im, (ratio_h, ratio_w)
 
-def detect(score_map, geo_map, timer, score_map_thresh=0.8, box_thresh=0.1, nms_thres=0.2):
+def detect(score_map, geo_map, timer, score_map_thresh=1e-5, box_thresh=1e-8, nms_thres=0.1):
+
+# def detect(score_map, geo_map, timer, score_map_thresh=0.8, box_thresh=0.1, nms_thres=0.2):
 	'''
 	restore text boxes from score map and geo map
 	:param score_map:
@@ -109,7 +110,6 @@ def detect(score_map, geo_map, timer, score_map_thresh=0.8, box_thresh=0.1, nms_
 	:param nms_thres: threshold for nms
 	:return:
 	'''
-	
 	if len(score_map.shape) == 4:
 		score_map = score_map[0, :, :, 0]
 		geo_map = geo_map[0, :, :, ]
@@ -124,13 +124,14 @@ def detect(score_map, geo_map, timer, score_map_thresh=0.8, box_thresh=0.1, nms_
 	boxes = np.zeros((text_box_restored.shape[0], 9), dtype=np.float32)
 	boxes[:, :8] = text_box_restored.reshape((-1, 8))
 	boxes[:, 8] = score_map[xy_text[:, 0], xy_text[:, 1]]
+	print('11')
+	input(boxes)
 	timer['restore'] = time.time() - start
 	# nms part
 	start = time.time()
 	# boxes = nms_locality.nms_locality(boxes.astype(np.float64), nms_thres)
 	boxes = lanms.merge_quadrangle_n9(boxes.astype('float32'), nms_thres)
 	timer['nms'] = time.time() - start
-
 	if boxes.shape[0] == 0:
 		return None, timer
 
@@ -139,8 +140,11 @@ def detect(score_map, geo_map, timer, score_map_thresh=0.8, box_thresh=0.1, nms_
 		mask = np.zeros_like(score_map, dtype=np.uint8)
 		cv2.fillPoly(mask, box[:8].reshape((-1, 4, 2)).astype(np.int32) // 4, 1)
 		boxes[i, 8] = cv2.mean(score_map, mask)[0]
+	print(22)
+	print(boxes)
 	boxes = boxes[boxes[:, 8] > box_thresh]
-
+	print('333')
+	input(boxes)
 	return boxes, timer
 
 def sort_poly(p):
@@ -234,7 +238,6 @@ East_model.load_state_dict(torch.load(checkpoint_path))
 def predict(argv=None):
 	
     try:
-        os.makedirs(output_dir_box)
         os.makedirs(output_dir_txt)
         os.makedirs(output_dir_pic)
     except OSError as e:

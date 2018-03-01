@@ -50,3 +50,4 @@ class LossFunc(nn.Module):
         L_g = L_AABB + 20 * L_theta
 
         return torch.mean(L_g * y_true_cls * training_mask) + classification_loss
+

@@ -10,13 +10,13 @@ import csv
 import matplotlib.pyplot as plt
 import matplotlib.patches as Patches
 from shapely.geometry import Polygon
-# training_data_path
-# max_text_size
-# min_text_size
-# min_crop_side_ratio
+
 
 
 def get_images(root):
+    '''
+    get images's path and name
+    '''
     files = []
     for ext in ['jpg', 'png', 'jpeg', 'JPG']:
         files.extend(gb.glob(os.path.join(root, '*.{}'.format(ext))))
@@ -566,155 +566,100 @@ def generate_rbox(im_size, polys, tags):
             geo_map[y, x, 4] = rotate_angle
     return score_map, geo_map, training_mask
 
-def image_label(img_root, txt_root,
-                input_size=512,
-              background_ratio=3./8,
-              random_scale=np.array([0.5, 1, 2.0, 3.0]),
-              vis=False):
-    image_list, img_name = get_images(img_root)
+def image_label(txt_root, image_list, img_name, index, 
+                input_size = 512, random_scale = np.array([0.5, 1, 2.0, 3.0]), 
+                background_ratio = 3./8):
+    '''
+    get image's corresponding matrix and ground truth
+    '''
+    
+    try:
+        im_fn = image_list[index]
+        im_name = img_name[index]
+        im = cv2.imread(im_fn)
+        # print im_fn
+        h, w, _ = im.shape
+        # txt_fn = 'gt_' + im_name.replace(im_name.split('.')[1], 'txt')
+        txt_fn = im_name.replace(im_name.split('.')[1], 'txt')
+        txt_fn = os.path.join(txt_root, txt_fn)
+        # if not os.path.exists(txt_fn):
+        #     pass
 
-    index = np.arange(0, len(image_list))
-    while True:
-        np.random.shuffle(index)
-        images = []
-        image_fns = []
-        score_maps = []
-        geo_maps = []
-        training_masks = []
-        for i in index:
-            try:
-                im_fn = image_list[i]
-                im_name = img_name[i]
-                im = cv2.imread(im_fn)
-                # print im_fn
-                h, w, _ = im.shape
-                txt_fn = 'gt_' + im_name.replace(im_name.split('.')[1], 'txt')
-                txt_fn = os.path.join(txt_root, txt_fn)
-                if not os.path.exists(txt_fn):
-                    continue
-
-                text_polys, text_tags = load_annoataion(txt_fn)
-                text_polys, text_tags = check_and_validate_polys(text_polys, text_tags, (h, w))
-                # if text_polys.shape[0] == 0:
-                #     continue
-                # random scale this image
-                rd_scale = np.random.choice(random_scale)
-                im = cv2.resize(im, dsize=None, fx=rd_scale, fy=rd_scale)
-                text_polys *= rd_scale
-                # print rd_scale
-                # random crop a area from image
-                if np.random.rand() < background_ratio:
-                    # crop background
-                    im, text_polys, text_tags = crop_area(im, text_polys, text_tags, crop_background=True)
-                    if text_polys.shape[0] > 0:
-                        # cannot find background
-                        continue
-                    # pad and resize image
-                    new_h, new_w, _ = im.shape
-                    max_h_w_i = np.max([new_h, new_w, input_size])
-                    im_padded = np.zeros((max_h_w_i, max_h_w_i, 3), dtype=np.uint8)
-                    im_padded[:new_h, :new_w, :] = im.copy()
-                    im = cv2.resize(im_padded, dsize=(input_size, input_size))
-                    score_map = np.zeros((input_size, input_size), dtype=np.uint8)
-                    geo_map_channels = 5 
+        text_polys, text_tags = load_annoataion(txt_fn)
+        text_polys, text_tags = check_and_validate_polys(text_polys, text_tags, (h, w))
+        # if text_polys.shape[0] == 0:
+        #     continue
+        # random scale this image
+        rd_scale = np.random.choice(random_scale)
+        im = cv2.resize(im, dsize=None, fx=rd_scale, fy=rd_scale)
+        text_polys *= rd_scale
+        # print rd_scale
+        # random crop a area from image
+        if np.random.rand() < background_ratio:
+            # crop background
+            im, text_polys, text_tags = crop_area(im, text_polys, text_tags, crop_background=True)
+            # if text_polys.shape[0] > 0:
+            #     # cannot find background
+            #     pass
+            # pad and resize image
+            new_h, new_w, _ = im.shape
+            max_h_w_i = np.max([new_h, new_w, input_size])
+            im_padded = np.zeros((max_h_w_i, max_h_w_i, 3), dtype=np.uint8)
+            im_padded[:new_h, :new_w, :] = im.copy()
+            im = cv2.resize(im_padded, dsize=(input_size, input_size))
+            score_map = np.zeros((input_size, input_size), dtype=np.uint8)
+            geo_map_channels = 5 
 #                     geo_map_channels = 5 if FLAGS.geometry == 'RBOX' else 8
-                    geo_map = np.zeros((input_size, input_size, geo_map_channels), dtype=np.float32)
-                    training_mask = np.ones((input_size, input_size), dtype=np.uint8)
-                else:
-                    im, text_polys, text_tags = crop_area(im, text_polys, text_tags, crop_background=False)
-                    if text_polys.shape[0] == 0:
-                        continue
-                    h, w, _ = im.shape
+            geo_map = np.zeros((input_size, input_size, geo_map_channels), dtype=np.float32)
+            training_mask = np.ones((input_size, input_size), dtype=np.uint8)
+        else:
+            im, text_polys, text_tags = crop_area(im, text_polys, text_tags, crop_background=False)
+            # if text_polys.shape[0] == 0:
+            #     pass
+            h, w, _ = im.shape
 
-                    # pad the image to the training input size or the longer side of image
-                    new_h, new_w, _ = im.shape
-                    max_h_w_i = np.max([new_h, new_w, input_size])
-                    im_padded = np.zeros((max_h_w_i, max_h_w_i, 3), dtype=np.uint8)
-                    im_padded[:new_h, :new_w, :] = im.copy()
-                    im = im_padded
-                    # resize the image to input size
-                    new_h, new_w, _ = im.shape
-                    resize_h = input_size
-                    resize_w = input_size
-                    im = cv2.resize(im, dsize=(resize_w, resize_h))
-                    resize_ratio_3_x = resize_w/float(new_w)
-                    resize_ratio_3_y = resize_h/float(new_h)
-                    text_polys[:, :, 0] *= resize_ratio_3_x
-                    text_polys[:, :, 1] *= resize_ratio_3_y
-                    new_h, new_w, _ = im.shape
-                    score_map, geo_map, training_mask = generate_rbox((new_h, new_w), text_polys, text_tags)
+            # pad the image to the training input size or the longer side of image
+            new_h, new_w, _ = im.shape
+            max_h_w_i = np.max([new_h, new_w, input_size])
+            im_padded = np.zeros((max_h_w_i, max_h_w_i, 3), dtype=np.uint8)
+            im_padded[:new_h, :new_w, :] = im.copy()
+            im = im_padded
+            # resize the image to input size
+            new_h, new_w, _ = im.shape
+            resize_h = input_size
+            resize_w = input_size
+            im = cv2.resize(im, dsize=(resize_w, resize_h))
+            resize_ratio_3_x = resize_w/float(new_w)
+            resize_ratio_3_y = resize_h/float(new_h)
+            text_polys[:, :, 0] *= resize_ratio_3_x
+            text_polys[:, :, 1] *= resize_ratio_3_y
+            new_h, new_w, _ = im.shape
+            score_map, geo_map, training_mask = generate_rbox((new_h, new_w), text_polys, text_tags)
 
-                if vis:
-                    fig, axs = plt.subplots(3, 2, figsize=(20, 30))
-                    # axs[0].imshow(im[:, :, ::-1])
-                    # axs[0].set_xticks([])
-                    # axs[0].set_yticks([])
-                    # for poly in text_polys:
-                    #     poly_h = min(abs(poly[3, 1] - poly[0, 1]), abs(poly[2, 1] - poly[1, 1]))
-                    #     poly_w = min(abs(poly[1, 0] - poly[0, 0]), abs(poly[2, 0] - poly[3, 0]))
-                    #     axs[0].add_artist(Patches.Polygon(
-                    #         poly * 4, facecolor='none', edgecolor='green', linewidth=2, linestyle='-', fill=True))
-                    #     axs[0].text(poly[0, 0] * 4, poly[0, 1] * 4, '{:.0f}-{:.0f}'.format(poly_h * 4, poly_w * 4),
-                    #                    color='purple')
-                    # axs[1].imshow(score_map)
-                    # axs[1].set_xticks([])
-                    # axs[1].set_yticks([])
-                    axs[0, 0].imshow(im[:, :, ::-1])
-                    axs[0, 0].set_xticks([])
-                    axs[0, 0].set_yticks([])
-                    for poly in text_polys:
-                        poly_h = min(abs(poly[3, 1] - poly[0, 1]), abs(poly[2, 1] - poly[1, 1]))
-                        poly_w = min(abs(poly[1, 0] - poly[0, 0]), abs(poly[2, 0] - poly[3, 0]))
-                        axs[0, 0].add_artist(Patches.Polygon(
-                            poly, facecolor='none', edgecolor='green', linewidth=2, linestyle='-', fill=True))
-                        axs[0, 0].text(poly[0, 0], poly[0, 1], '{:.0f}-{:.0f}'.format(poly_h, poly_w), color='purple')
-                    axs[0, 1].imshow(score_map[::, ::])
-                    axs[0, 1].set_xticks([])
-                    axs[0, 1].set_yticks([])
-                    axs[1, 0].imshow(geo_map[::, ::, 0])
-                    axs[1, 0].set_xticks([])
-                    axs[1, 0].set_yticks([])
-                    axs[1, 1].imshow(geo_map[::, ::, 1])
-                    axs[1, 1].set_xticks([])
-                    axs[1, 1].set_yticks([])
-                    axs[2, 0].imshow(geo_map[::, ::, 2])
-                    axs[2, 0].set_xticks([])
-                    axs[2, 0].set_yticks([])
-                    axs[2, 1].imshow(training_mask[::, ::])
-                    axs[2, 1].set_xticks([])
-                    axs[2, 1].set_yticks([])
-                    plt.tight_layout()
-                    plt.show()
-                    plt.close()
-
-                images.append(im[:, :, ::-1].astype(np.float32))
-                image_fns.append(im_fn)
-                score_maps.append(score_map[::4, ::4, np.newaxis].astype(np.float32))
-                geo_maps.append(geo_map[::4, ::4, :].astype(np.float32))
-                training_masks.append(training_mask[::4, ::4, np.newaxis].astype(np.float32))
-                
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
-                continue
-
-        return images, score_maps, geo_maps, training_masks
-            
+        images = im[:, :, ::-1].astype(np.float32)
+        score_maps = score_map[::4, ::4, np.newaxis].astype(np.float32)
+        geo_maps = geo_map[::4, ::4, :].astype(np.float32)
+        training_masks = training_mask[::4, ::4, np.newaxis].astype(np.float32)
+        
+    except Exception as e:
+        images, score_maps, geo_maps, training_masks = None, None, None, None
+    
+    return images, score_maps, geo_maps, training_masks
 
 class custom_dset(data.Dataset):
     def __init__(self, img_root, txt_root):
-        self.images, self.score_maps, self.geo_maps, self.training_masks = image_label(img_root, txt_root)
-    
+        self.image_list, self.img_name = get_images(img_root)
+        self.txt_root = txt_root
     def __getitem__(self, index):
-        img = self.images[index]
-        score_map = self.score_maps[index]
-        geo_map = self.geo_maps[index]
-        training_mask = self.training_masks[index]
+        img, score_map, geo_map, training_mask = image_label(self.txt_root, 
+            self.image_list, self.img_name, index, input_size = 512, 
+            random_scale = np.array([0.5, 1, 2.0, 3.0]), background_ratio = 3./8)
+
         
         return img, score_map, geo_map, training_mask
 
     def __len__(self):
-        return len(self.images)
+        return len(self.image_list)
 
 def collate_fn(batch):
     img, score_map, geo_map, training_mask = zip(*batch)
@@ -724,18 +669,19 @@ def collate_fn(batch):
     geo_maps = []
     training_masks = []
     for i in range(bs):
-        a = torch.from_numpy(img[i])
-        a = a.permute(2, 0, 1)
-        images.append(a)
-        b = torch.from_numpy(score_map[i])
-        b = b.permute(2, 0, 1)
-        score_maps.append(b)
-        c = torch.from_numpy(geo_map[i])
-        c = c.permute(2, 0, 1)
-        geo_maps.append(c)
-        d = torch.from_numpy(training_mask[i])
-        d = d.permute(2, 0, 1)
-        training_masks.append(d)
+        if img[i] is not None:
+            a = torch.from_numpy(img[i])
+            a = a.permute(2, 0, 1)
+            images.append(a)
+            b = torch.from_numpy(score_map[i])
+            b = b.permute(2, 0, 1)
+            score_maps.append(b)
+            c = torch.from_numpy(geo_map[i])
+            c = c.permute(2, 0, 1)
+            geo_maps.append(c)
+            d = torch.from_numpy(training_mask[i])
+            d = d.permute(2, 0, 1)
+            training_masks.append(d)
     images = torch.stack(images, 0)
     score_maps = torch.stack(score_maps, 0)
     geo_maps = torch.stack(geo_maps, 0)
